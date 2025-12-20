@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ตารางรับส่งผ้า</title>
+    <script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Sarabun', sans-serif; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .header { text-align: center; color: white; padding: 20px 0; margin-bottom: 20px; }
+        .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 5px; }
+        .header p { font-size: 14px; opacity: 0.9; }
+        .search-box { width: 100%; padding: 15px 20px; font-size: 16px; border: none; border-radius: 50px; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.1); font-family: 'Sarabun', sans-serif; margin-bottom: 20px; }
+        .search-box:focus { outline: none; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+        .location-card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .location-name { font-size: 20px; font-weight: 700; color: #667eea; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #f0f0f0; }
+        .zone-badge { display: inline-block; background: #f0f0f0; color: #666; padding: 5px 12px; border-radius: 20px; font-size: 13px; margin-left: 10px; font-weight: 600; }
+        .location-image { width: 100%; max-height: 250px; object-fit: cover; border-radius: 10px; margin: 15px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1); cursor: pointer; transition: transform 0.2s; }
+        .location-image:hover { transform: scale(1.02); }
+        .image-placeholder { width: 100%; height: 150px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #666; font-size: 14px; margin: 15px 0; }
+        .schedule-info { margin: 12px 0; display: flex; align-items: flex-start; line-height: 1.6; }
+        .icon { font-size: 20px; margin-right: 12px; min-width: 25px; }
+        .schedule-info strong { color: #333; font-weight: 600; }
+        .highlight { background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%); padding: 15px; border-radius: 10px; margin-top: 15px; border-left: 4px solid #fdcb6e; }
+        .highlight strong { display: block; margin-bottom: 8px; color: #d63031; font-size: 15px; }
+        .note { margin-top: 12px; padding: 12px; background: #e3f2fd; border-radius: 8px; color: #1976d2; font-size: 14px; border-left: 3px solid #2196f3; }
+        .loading { text-align: center; color: white; padding: 40px 20px; font-size: 18px; }
+        .error { background: #fff; padding: 20px; border-radius: 10px; color: #d63031; text-align: center; margin: 20px 0; }
+        .no-results { text-align: center; color: white; padding: 40px 20px; font-size: 16px; opacity: 0.9; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); }
+        .modal-content { margin: auto; display: block; width: 90%; max-width: 700px; max-height: 90vh; object-fit: contain; position: relative; top: 50%; transform: translateY(-50%); }
+        .close-modal { position: absolute; top: 20px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; cursor: pointer; z-index: 1001; }
+        .close-modal:hover { color: #bbb; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧺 ตารางรับส่งผ้า</h1>
+        <p>ตรวจสอบวันเวลารับส่งผ้าของคุณ</p>
+    </div>
+    <input type="text" id="searchBox" class="search-box" placeholder="🔍 ค้นหาชื่อหมู่บ้าน/คอนโด หรือพื้นที่...">
+    <div id="locationList"><div class="loading">⏳ กำลังโหลดข้อมูล...</div></div>
+    <div id="imageModal" class="modal" onclick="closeImageModal()">
+        <span class="close-modal">&times;</span>
+        <img class="modal-content" id="modalImage">
+    </div>
+    <script>
+        let scheduleData = [];
+        const LIFF_ID = '2008736166-9HLEhsGC';
+        const API_URL = 'https://script.google.com/macros/s/AKfycbwr40ajD72_XF1QyMLOaSLzRtT8eeDdZJQ4g3tQDfu3VkVTL4DtIR3md51y-rYbdCmf/exec';
+
+        window.onload = function() {
+            liff.init({ liffId: LIFF_ID }).then(() => { loadScheduleData(); }).catch((err) => { showError('ไม่สามารถเชื่อมต่อกับ LINE ได้'); });
+        };
+
+        async function loadScheduleData() {
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) throw new Error('Network error');
+                scheduleData = await response.json();
+                if (scheduleData.error) throw new Error(scheduleData.error);
+                displayLocations(scheduleData);
+            } catch (error) {
+                showError('ไม่สามารถโหลดข้อมูลได้');
+            }
+        }
+
+        function displayLocations(data) {
+            const container = document.getElementById('locationList');
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="no-results">😔 ไม่พบข้อมูล</div>';
+                return;
+            }
+            container.innerHTML = '';
+            data.forEach((location, index) => {
+                setTimeout(() => { container.appendChild(createLocationCard(location)); }, index * 50);
+            });
+        }
+
+        function createLocationCard(loc) {
+            const card = document.createElement('div');
+            card.className = 'location-card';
+            let imageHTML = loc.imageUrl && loc.imageUrl.trim() !== '' ?
+                `<img src="${loc.imageUrl}" alt="จุดรับส่งผ้า ${loc.name}" class="location-image" onclick="openImageModal('${loc.imageUrl}', '${loc.name}')" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"><div class="image-placeholder" style="display:none;">📷 ไม่สามารถโหลดรูปได้</div>` :
+                `<div class="image-placeholder">📷 ยังไม่มีรูปภาพ</div>`;
+            card.innerHTML = `<div class="location-name">${loc.name}<span class="zone-badge">${loc.zone}</span></div>${imageHTML}<div class="schedule-info"><span class="icon">📅</span><span><strong>วันรับส่งผ้า:</strong> ${loc.day}</span></div><div class="schedule-info"><span class="icon">🕐</span><span><strong>เวลา:</strong> ${loc.time} น.</span></div><div class="highlight"><strong>📍 วิธีการรับส่ง</strong>${loc.method}</div>${loc.note ? `<div class="note">💡 <strong>หมายเหตุ:</strong> ${loc.note}</div>` : ''}`;
+            return card;
+        }
+
+        document.getElementById('searchBox').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase().trim();
+            if (searchTerm === '') { displayLocations(scheduleData); return; }
+            const filtered = scheduleData.filter(loc => loc.name.toLowerCase().includes(searchTerm) || loc.zone.toLowerCase().includes(searchTerm));
+            filtered.length === 0 ? document.getElementById('locationList').innerHTML = '<div class="no-results">😔 ไม่พบสถานที่</div>' : displayLocations(filtered);
+        });
+
+        function openImageModal(imageUrl, locationName) {
+            const modal = document.getElementById('imageModal');
+            const modalImg = document.getElementById('modalImage');
+            modal.style.display = 'block';
+            modalImg.src = imageUrl;
+            modalImg.alt = 'จุดรับส่งผ้า ' + locationName;
+        }
+
+        function closeImageModal() { document.getElementById('imageModal').style.display = 'none'; }
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeImageModal(); });
+        function showError(message) { document.getElementById('locationList').innerHTML = `<div class="error">❌ ${message}</div>`; }
+    </script>
+</body>
+</html>
